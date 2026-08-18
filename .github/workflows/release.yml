@@ -1,0 +1,33 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Version gegen Tag pruefen
+        shell: powershell
+        run: |
+          $version = (Get-Content .\VERSION -Raw).Trim()
+          $tag = '${{ github.ref_name }}'.TrimStart('v')
+          if ($version -ne $tag) { throw "VERSION=$version passt nicht zu Tag $tag" }
+
+      - name: EXE bauen
+        shell: powershell
+        run: .\Build\Build.ps1 -CI
+
+      - name: GitHub Release erstellen
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" .\Release\* --generate-notes --title "Kinderbetreuung ${{ github.ref_name }}"

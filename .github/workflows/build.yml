@@ -1,0 +1,25 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: EXE bauen
+        shell: powershell
+        run: .\Build\Build.ps1 -CI
+
+      - name: Build-Artefakte hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kinderbetreuung-Windows
+          path: |
+            Release/*.exe
+            Release/*.sha256
