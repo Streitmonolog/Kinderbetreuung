@@ -1,0 +1,24 @@
+# Einheitliche Zeilenenden für Entwicklung und GitHub
+* text=auto
+
+# Windows-/PowerShell-Quelldateien
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.cs  text eol=crlf
+
+# GitHub, Dokumentation und Konfiguration
+*.md  text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+VERSION text eol=lf
+
+# Binaerdateien
+*.png binary
+*.ico binary
+*.exe binary
+*.zip binary
+*.pdf binary
+*.xlsx binary

@@ -1,31 +1,34 @@
 # Release-Checkliste
 
-## Vor dem Taggen
+## Vor dem Tag
 
-- [ ] Versionsnummer aktualisiert
+- [ ] `VERSION` aktualisiert
 - [ ] `CHANGELOG.md` aktualisiert
-- [ ] keine persönlichen Testdaten im Repository
-- [ ] Anwendung startet auf sauberem Windows-Benutzerprofil
-- [ ] Speichern und erneutes Laden getestet
-- [ ] `Auswahl leeren` getestet
-- [ ] letzte Kalenderwoche getestet
-- [ ] Export mit Microsoft Excel getestet
-- [ ] Export mit LibreOffice getestet
-- [ ] PDF auf Lesbarkeit geprüft
-- [ ] Datenschutz- und Steuerhinweise geprüft
+- [ ] lokaler Start getestet
+- [ ] Speichern/Laden getestet
+- [ ] Excel-Export getestet
+- [ ] LibreOffice-Export getestet
+- [ ] keine personenbezogenen Testdaten im Repository
+- [ ] `git status` sauber
+- [ ] GitHub-Build auf `main` grün
 
-## Build
+## Release
 
-- [ ] `Build_EXE.bat` erfolgreich
-- [ ] EXE startet ohne Projektordner
-- [ ] Icon wird angezeigt
-- [ ] Versionsnummer stimmt
-- [ ] SHA-256-Prüfsumme erzeugt
+```powershell
+git tag -a vX.Y.Z -m "Kinderbetreuung vX.Y.Z"
+git push origin vX.Y.Z
+```
 
-## GitHub Release
+Danach:
 
-- [ ] Tag `vX.Y.Z`
-- [ ] Release Notes
-- [ ] EXE hochgeladen
-- [ ] SHA256-Datei hochgeladen
-- [ ] Quellcode automatisch durch GitHub verfügbar
+- [ ] Release-Workflow grün
+- [ ] EXE vorhanden
+- [ ] SHA-256-Datei vorhanden
+- [ ] EXE vom GitHub-Release herunterladen und testen
+- [ ] Release als `Latest` sichtbar
+
+## Nach dem Release
+
+- [ ] GitHub-README prüfen
+- [ ] Screenshot bei UI-Änderungen aktualisieren
+- [ ] bekannte Probleme dokumentieren
