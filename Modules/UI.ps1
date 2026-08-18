@@ -14,13 +14,13 @@ $clrGridAlt       = [System.Drawing.Color]::FromArgb(246,250,251)
 $clrDangerSoft    = [System.Drawing.Color]::FromArgb(250,238,238)
 $clrWhite         = [System.Drawing.Color]::White
 
-# Kinderbetreuung 1.0.17 - Benutzeroberflaeche
+# Kinderbetreuung 1.0.18 - Benutzeroberflaeche
 # Aufbau der WinForms-Oberflaeche und Event-Verknuepfungen.
 # Fachlogik befindet sich in den anderen Modulen.
 
 try {
     $form=New-Object System.Windows.Forms.Form
-    $form.Text="Kinderbetreuung 1.0.17"
+    $form.Text="Kinderbetreuung 1.0.18"
     $form.Size=[System.Drawing.Size]::new(1200,820)
     $form.StartPosition="CenterScreen"
     $form.BackColor=[System.Drawing.Color]::FromArgb(245,248,250)
@@ -28,6 +28,12 @@ try {
     $iconFile = Join-Path $AppDir "Assets\Kinderbetreuung.ico"
     if (Test-Path $iconFile) {
         try { $form.Icon = New-Object System.Drawing.Icon($iconFile) } catch {}
+    } else {
+        # Eingebettete Release-EXE: das EXE-Icon direkt verwenden.
+        try {
+            $exePath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+            $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($exePath)
+        } catch {}
     }
 
     $top=New-Object System.Windows.Forms.Panel

@@ -1,4 +1,4 @@
-﻿# Kinderbetreuung 1.0.17 - Kalender
+﻿# Kinderbetreuung 1.0.18 - Kalender
 # Jahresaufbau, NRW-Feiertage, Urlaub und Datumspruefungen.
 
 function Get-IsoWeek([datetime]$Date) {

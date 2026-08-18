@@ -1,98 +1,99 @@
 using System;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
+using System.Management.Automation;
 using System.Reflection;
+using System.Text;
+using System.Threading;
 using System.Windows.Forms;
-
-[assembly: AssemblyTitle("Kinderbetreuung")]
-[assembly: AssemblyDescription("Lokale Dokumentation und Auswertung von Kinderbetreuungskosten")]
-[assembly: AssemblyCompany("Lorenz Köcke")]
-[assembly: AssemblyProduct("Kinderbetreuung")]
-[assembly: AssemblyCopyright("Copyright © 2026 Lorenz Köcke")]
-[assembly: AssemblyVersion("__VERSION__.0")]
-[assembly: AssemblyFileVersion("__VERSION__.0")]
 
 internal static class Program
 {
-    private const string Version = "__VERSION__";
-    private const string ResourceName = "Kinderbetreuung.Payload.zip";
+    private const string Version = "1.0.18";
+    private const string ScriptResource = "Kinderbetreuung.EmbeddedApp.ps1";
 
     [STAThread]
     private static void Main()
     {
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+
         try
         {
-            string baseDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Kinderbetreuung", "Runtime", Version);
+            string script = ReadEmbeddedText(ScriptResource);
 
-            Directory.CreateDirectory(baseDir);
-            ExtractPayload(baseDir);
-
-            string script = Path.Combine(baseDir, "App.ps1");
-            if (!File.Exists(script))
-                throw new FileNotFoundException("App.ps1 wurde im Programmpaket nicht gefunden.");
-
-            var start = new ProcessStartInfo
+            using (var runspace = System.Management.Automation.Runspaces.RunspaceFactory.CreateRunspace())
             {
-                FileName = "powershell.exe",
-                Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + "\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = baseDir
-            };
+                // WinForms-Autocomplete, Dialoge und weitere UI-Funktionen benoetigen STA.
+                runspace.ApartmentState = System.Threading.ApartmentState.STA;
+                runspace.ThreadOptions = System.Management.Automation.Runspaces.PSThreadOptions.ReuseThread;
+                runspace.Open();
 
-            using (var process = Process.Start(start))
-            {
-                if (process == null)
-                    throw new InvalidOperationException("PowerShell konnte nicht gestartet werden.");
-                process.WaitForExit();
-                if (process.ExitCode != 0)
-                    throw new InvalidOperationException("Kinderbetreuung wurde mit Fehlercode " + process.ExitCode + " beendet.");
+                using (PowerShell ps = PowerShell.Create())
+                {
+                    ps.Runspace = runspace;
+
+                    // Kennzeichnet den eingebetteten Release-Modus.
+                    ps.AddScript("$script:EmbeddedMode = $true");
+                    ps.Invoke();
+
+                    ps.Commands.Clear();
+                    ps.AddScript(script, useLocalScope: false);
+
+                    Collection<PSObject> result = ps.Invoke();
+
+                    if (ps.HadErrors)
+                    {
+                        StringBuilder errors = new StringBuilder();
+                        foreach (var error in ps.Streams.Error)
+                            errors.AppendLine(error.ToString());
+
+                        throw new InvalidOperationException(errors.ToString().Trim());
+                    }
+                }
             }
         }
         catch (Exception ex)
         {
+            string dataDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Kinderbetreuung");
+            Directory.CreateDirectory(dataDir);
+
+            string errorFile = Path.Combine(dataDir, "startfehler.txt");
+            try
+            {
+                File.WriteAllText(
+                    errorFile,
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") +
+                    Environment.NewLine +
+                    ex.ToString(),
+                    Encoding.UTF8);
+            }
+            catch { }
+
             MessageBox.Show(
-                ex.Message,
-                "Kinderbetreuung " + Version + " - Startfehler",
+                "Startfehler:" + Environment.NewLine +
+                ex.Message + Environment.NewLine + Environment.NewLine +
+                "Details:" + Environment.NewLine + errorFile,
+                "Kinderbetreuung " + Version,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
     }
 
-    private static void ExtractPayload(string destination)
+    private static string ReadEmbeddedText(string resourceName)
     {
         Assembly asm = Assembly.GetExecutingAssembly();
-        using (Stream stream = asm.GetManifestResourceStream(ResourceName))
+        using (Stream stream = asm.GetManifestResourceStream(resourceName))
         {
             if (stream == null)
-                throw new InvalidOperationException("Interne Programmdateien fehlen.");
+                throw new InvalidOperationException(
+                    "Die eingebettete Anwendung konnte nicht gefunden werden.");
 
-            using (var archive = new ZipArchive(stream, ZipArchiveMode.Read))
-            {
-                foreach (var entry in archive.Entries)
-                {
-                    string target = Path.Combine(destination, entry.FullName.Replace('/', Path.DirectorySeparatorChar));
-                    string fullTarget = Path.GetFullPath(target);
-                    string fullBase = Path.GetFullPath(destination) + Path.DirectorySeparatorChar;
-
-                    if (!fullTarget.StartsWith(fullBase, StringComparison.OrdinalIgnoreCase))
-                        throw new InvalidOperationException("Ungueltiger Dateipfad im Programmpaket.");
-
-                    if (string.IsNullOrEmpty(entry.Name))
-                    {
-                        Directory.CreateDirectory(fullTarget);
-                        continue;
-                    }
-
-                    Directory.CreateDirectory(Path.GetDirectoryName(fullTarget));
-                    using (Stream input = entry.Open())
-                    using (FileStream output = new FileStream(fullTarget, FileMode.Create, FileAccess.Write, FileShare.None))
-                        input.CopyTo(output);
-                }
-            }
+            using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, true))
+                return reader.ReadToEnd();
         }
     }
 }

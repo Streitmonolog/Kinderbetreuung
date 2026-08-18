@@ -4,19 +4,21 @@ on:
   push:
     branches: [ main ]
   pull_request:
+    branches: [ main ]
 
 jobs:
   windows-build:
     runs-on: windows-latest
+
     steps:
-      - name: Repository auschecken
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: EXE bauen
+      - name: Build release executable
         shell: powershell
-        run: .\Build\Build.ps1 -CI
+        run: .\Build\Build.ps1
 
-      - name: Build-Artefakte hochladen
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: Kinderbetreuung-Windows

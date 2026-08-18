@@ -1,4 +1,4 @@
-﻿# Kinderbetreuung 1.0.17 - Export
+﻿# Kinderbetreuung 1.0.18 - Export
 # XLSX/PDF-Ausgabe ueber Microsoft Excel oder LibreOffice.
 
 function Choose-ExportMode {

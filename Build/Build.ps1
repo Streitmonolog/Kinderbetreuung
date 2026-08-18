@@ -1,93 +1,115 @@
-param(
-    [switch]$CI
+﻿param(
+    [string]$VersionFile = (Join-Path $PSScriptRoot "..\VERSION")
 )
 
-$ErrorActionPreference = 'Stop'
-$Root = Split-Path -Parent $PSScriptRoot
-$Version = (Get-Content (Join-Path $Root 'VERSION') -Raw).Trim()
+$ErrorActionPreference = "Stop"
 
-if ($Version -notmatch '^\d+\.\d+\.\d+$') {
-    throw "Ungueltige Versionsnummer in VERSION: $Version"
+$Root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
+$Version = (Get-Content $VersionFile -Raw).Trim()
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    throw "VERSION ist leer."
 }
 
-$ReleaseDir = Join-Path $Root 'Release'
-$Payload = Join-Path $PSScriptRoot 'Payload.zip'
-$GeneratedLauncher = Join-Path $PSScriptRoot 'Launcher.generated.cs'
-$Exe = Join-Path $ReleaseDir ("Kinderbetreuung_{0}.exe" -f $Version)
-$HashFile = $Exe + '.sha256'
-
+$ReleaseDir = Join-Path $Root "Release"
 New-Item -ItemType Directory -Path $ReleaseDir -Force | Out-Null
-Remove-Item $Payload,$GeneratedLauncher,$Exe,$HashFile -Force -ErrorAction SilentlyContinue
 
-# Payload aus den echten Projektquellen erzeugen. Keine generierten oder lokalen Daten einbetten.
-$payloadItems = @(
-    @{ Source = (Join-Path $Root 'App.ps1'); Target = 'App.ps1' },
-    @{ Source = (Join-Path $Root 'Assets\Kinderbetreuung.ico'); Target = 'Assets/Kinderbetreuung.ico' },
-    @{ Source = (Join-Path $Root 'Assets\Kinderbetreuung.png'); Target = 'Assets/Kinderbetreuung.png' }
+$GeneratedDir = Join-Path $PSScriptRoot "Generated"
+New-Item -ItemType Directory -Path $GeneratedDir -Force | Out-Null
+
+$EmbeddedScript = Join-Path $GeneratedDir "EmbeddedApp.ps1"
+
+# App-Bootstrap ohne externen Modul-Loader.
+$app = Get-Content (Join-Path $Root "App.ps1") -Raw -Encoding UTF8
+
+# Der eingebettete Modus wird vom C#-Launcher vor dem Skript gesetzt.
+# App.ps1 initialisiert Pfade/Zustand; die Module werden danach inline angehaengt.
+$parts = New-Object System.Collections.Generic.List[string]
+$parts.Add($app)
+
+foreach ($name in @("Core.ps1","Calendar.ps1","Data.ps1","Export.ps1","UI.ps1")) {
+    $path = Join-Path $Root ("Modules\" + $name)
+    if (-not (Test-Path $path)) {
+        throw "Fehlendes Modul: $path"
+    }
+    $parts.Add("`r`n# ===== BEGIN MODULE: $name =====`r`n")
+    $parts.Add((Get-Content $path -Raw -Encoding UTF8))
+    $parts.Add("`r`n# ===== END MODULE: $name =====`r`n")
+}
+
+[System.IO.File]::WriteAllText(
+    $EmbeddedScript,
+    ($parts -join "`r`n"),
+    (New-Object System.Text.UTF8Encoding($true))
 )
 
-Get-ChildItem (Join-Path $Root 'Modules') -Filter '*.ps1' | Sort-Object Name | ForEach-Object {
-    $payloadItems += @{ Source = $_.FullName; Target = ('Modules/' + $_.Name) }
-}
-
-Add-Type -AssemblyName System.IO.Compression
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zip = [System.IO.Compression.ZipFile]::Open($Payload,[System.IO.Compression.ZipArchiveMode]::Create)
+# Windows PowerShell Automation Assembly
+# Nicht auf einen festen Dateipfad vertrauen: je nach Windows-Version liegt
+# System.Management.Automation.dll im GAC bzw. in einem anderen Framework-Pfad.
 try {
-    foreach ($item in $payloadItems) {
-        if (-not (Test-Path $item.Source)) { throw "Fehlende Payload-Datei: $($item.Source)" }
-        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-            $zip,
-            $item.Source,
-            $item.Target,
-            [System.IO.Compression.CompressionLevel]::Optimal
-        ) | Out-Null
-    }
+    $AutomationDll = [System.Management.Automation.PowerShell].Assembly.Location
 }
-finally {
-    $zip.Dispose()
+catch {
+    throw "Die Windows-PowerShell-Automation-Assembly konnte nicht ermittelt werden."
 }
 
-# Launcher aus Vorlage mit zentraler Versionsnummer erzeugen.
-$launcher = Get-Content (Join-Path $PSScriptRoot 'Launcher.cs') -Raw
-$launcher = $launcher.Replace('__VERSION__',$Version)
-Set-Content -Path $GeneratedLauncher -Value $launcher -Encoding UTF8
+if ([string]::IsNullOrWhiteSpace($AutomationDll) -or -not (Test-Path $AutomationDll)) {
+    throw "System.Management.Automation.dll wurde nicht gefunden. Ermittelter Pfad: $AutomationDll"
+}
 
-$candidates = @(
+Write-Host "PowerShell Automation:"
+Write-Host "  $AutomationDll"
+
+# Klassischer .NET Framework C# Compiler
+$CscCandidates = @(
     "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe",
     "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe"
 )
-$Csc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $Csc) { throw 'Microsoft C# Compiler csc.exe wurde nicht gefunden.' }
+$Csc = $CscCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $Csc) {
+    throw "csc.exe wurde nicht gefunden."
+}
+
+$Exe = Join-Path $ReleaseDir ("Kinderbetreuung_{0}.exe" -f $Version)
+$Icon = Join-Path $Root "Assets\Kinderbetreuung.ico"
+$Launcher = Join-Path $PSScriptRoot "Launcher.cs"
 
 $args = @(
-    '/nologo',
-    '/target:winexe',
-    '/platform:anycpu',
-    '/optimize+',
-    ('/win32icon:"{0}"' -f (Join-Path $Root 'Assets\Kinderbetreuung.ico')),
-    ('/resource:"{0}",Kinderbetreuung.Payload.zip' -f $Payload),
-    '/reference:System.Windows.Forms.dll',
-    '/reference:System.IO.Compression.dll',
-    '/reference:System.IO.Compression.FileSystem.dll',
-    ('/out:"{0}"' -f $Exe),
-    ('"{0}"' -f $GeneratedLauncher)
+    "/nologo",
+    "/target:winexe",
+    "/optimize+",
+    "/platform:anycpu",
+    "/out:$Exe",
+    "/win32icon:$Icon",
+    "/reference:System.dll",
+    "/reference:System.Core.dll",
+    "/reference:System.Windows.Forms.dll",
+    "/reference:System.Drawing.dll",
+    "/reference:$AutomationDll",
+    "/resource:$EmbeddedScript,Kinderbetreuung.EmbeddedApp.ps1",
+    $Launcher
 )
 
-$proc = Start-Process -FilePath $Csc -ArgumentList $args -NoNewWindow -Wait -PassThru
-if ($proc.ExitCode -ne 0 -or -not (Test-Path $Exe)) {
-    throw "EXE-Build fehlgeschlagen (ExitCode $($proc.ExitCode))."
+Write-Host ""
+Write-Host "Kinderbetreuung $Version - Release Build"
+Write-Host "-----------------------------------------"
+Write-Host "Launcher: In-Process Windows PowerShell"
+Write-Host "Keine Laufzeit-Extraktion, kein powershell.exe-Unterprozess."
+Write-Host ""
+
+& $Csc @args
+if ($LASTEXITCODE -ne 0) {
+    throw "C#-Build fehlgeschlagen (ExitCode $LASTEXITCODE)."
 }
 
-$hash = (Get-FileHash $Exe -Algorithm SHA256).Hash.ToLowerInvariant()
-Set-Content -Path $HashFile -Value ("{0}  {1}" -f $hash,[IO.Path]::GetFileName($Exe)) -Encoding ASCII
-
-Write-Host ''
-Write-Host 'Build erfolgreich:' -ForegroundColor Green
-Write-Host $Exe
-Write-Host ('SHA256: ' + $hash)
-
-if (-not $CI) {
-    Write-Host ''
-    Write-Host 'Die Release-Dateien liegen unter .\Release\'
+if (-not (Test-Path $Exe)) {
+    throw "EXE wurde nicht erzeugt."
 }
+
+$Hash = (Get-FileHash $Exe -Algorithm SHA256).Hash.ToLowerInvariant()
+$HashFile = "$Exe.sha256"
+"$Hash  $([System.IO.Path]::GetFileName($Exe))" | Set-Content $HashFile -Encoding ASCII
+
+Write-Host "Erstellt:"
+Write-Host "  $Exe"
+Write-Host "  $HashFile"

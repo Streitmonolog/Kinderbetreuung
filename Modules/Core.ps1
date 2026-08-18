@@ -1,4 +1,4 @@
-﻿# Kinderbetreuung 1.0.17 - Core
+﻿# Kinderbetreuung 1.0.18 - Core
 # Gemeinsame Hilfsfunktionen. Keine Oberflaechenlogik.
 
 function Show-Info([string]$Text) {

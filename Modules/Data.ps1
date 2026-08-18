@@ -1,10 +1,10 @@
-﻿# Kinderbetreuung 1.0.17 - Daten
+﻿# Kinderbetreuung 1.0.18 - Daten
 # Betreuungstermine, Personenprofile, Speicherung, Summen und interner Volltest.
 
 function Get-PersonProfiles {
     $profiles = @{}
 
-    # Global default person first.
+    # Standard-Betreuungsperson als bekanntes Profil aufnehmen.
     if (-not [string]::IsNullOrWhiteSpace($txtCare.Text)) {
         $name = $txtCare.Text.Trim()
         $profiles[$name.ToLowerInvariant()] = [pscustomobject]@{
@@ -14,29 +14,41 @@ function Get-PersonProfiles {
         }
     }
 
+    # Wochen chronologisch durchlaufen.
+    # Bei mehrfach verwendeten Personen gewinnt der zuletzt bekannte
+    # positive Stundenlohn. Dadurch werden spaetere Aenderungen uebernommen.
     foreach ($w in $script:Weeks) {
         foreach ($day in $w.Days) {
             $name = [string]$day.Person
             if ([string]::IsNullOrWhiteSpace($name)) { continue }
+
             $name = $name.Trim()
             $key = $name.ToLowerInvariant()
 
             $rate = Parse-DecimalDE ([string]$day.Stundenlohn)
             $type = [string]$day.Art
-            if ($type -notin @("unentgeltlich","entgeltlich")) { $type = "unentgeltlich" }
+            if ($type -notin @("unentgeltlich","entgeltlich")) {
+                $type = "unentgeltlich"
+            }
 
             if (-not $profiles.ContainsKey($key)) {
                 $profiles[$key] = [pscustomobject]@{
                     Name = $name
-                    Rate = $rate
+                    Rate = 0.0
                     Type = $type
                 }
-            } else {
-                # Prefer a known paid rate over zero / older unpaid profile.
+            }
+
+            # Letzte Schreibweise des Namens merken.
+            $profiles[$key].Name = $name
+
+            # Ein entgeltlicher Termin kennzeichnet das Profil als entgeltlich.
+            if ($type -eq "entgeltlich") {
+                $profiles[$key].Type = "entgeltlich"
+
+                # Positiven Stundenlohn immer als zuletzt bekannten Wert merken.
                 if ($rate -gt 0) {
                     $profiles[$key].Rate = $rate
-                    $profiles[$key].Type = "entgeltlich"
-                    $profiles[$key].Name = $name
                 }
             }
         }
@@ -69,26 +81,38 @@ function Apply-PersonProfile([System.Windows.Forms.ComboBox]$Control) {
 
     $profiles = Get-PersonProfiles
     $key = $Control.Text.Trim().ToLowerInvariant()
+
     if (-not $profiles.ContainsKey($key)) { return }
 
     $profile = $profiles[$key]
+
     $typeControls = @($cmbMoType,$cmbDiType,$cmbMiType,$cmbDoType,$cmbFrType)
     $rateControls = @($txtMoRate,$txtDiRate,$txtMiRate,$txtDoRate,$txtFrRate)
     $travelControls = @($chkMoTravel,$chkDiTravel,$chkMiTravel,$chkDoTravel,$chkFrTravel)
 
-    if ($profile.Rate -gt 0) {
-        $typeControls[$index].SelectedItem = "entgeltlich"
+    if ($profile.Type -eq "entgeltlich" -or $profile.Rate -gt 0) {
+        $script:LoadingDetail = $true
+        try {
+            $typeControls[$index].SelectedItem = "entgeltlich"
 
-        # Only auto-fill if currently empty/zero, so manual changes are respected.
-        if ((Parse-DecimalDE $rateControls[$index].Text) -le 0) {
-            $rateControls[$index].Text = $profile.Rate.ToString(
-                "0.00",
-                [Globalization.CultureInfo]::GetCultureInfo("de-DE")
-            )
+            if ($profile.Rate -gt 0) {
+                # Bekannten Stundenlohn bewusst uebernehmen.
+                # Eine manuelle Aenderung ist danach weiterhin jederzeit moeglich.
+                $rateControls[$index].Text = $profile.Rate.ToString(
+                    "0.00",
+                    [Globalization.CultureInfo]::GetCultureInfo("de-DE")
+                )
+            }
+
+            # Entgeltliche Betreuung standardmaessig ohne Fahrtkosten.
+            $travelControls[$index].Checked = $false
         }
-
-        $travelControls[$index].Checked = $false
-    } elseif ($profile.Type -eq "unentgeltlich") {
+        finally {
+            $script:LoadingDetail = $false
+        }
+    }
+    else {
+        # Bekannte unentgeltliche Person.
         if ([string]::IsNullOrWhiteSpace([string]$typeControls[$index].SelectedItem)) {
             $typeControls[$index].SelectedItem = "unentgeltlich"
         }
@@ -96,6 +120,7 @@ function Apply-PersonProfile([System.Windows.Forms.ComboBox]$Control) {
 
     Save-CurrentDetail
     Update-Summary
+    $script:IsDirty = $true
 }
 
 function Save-CurrentDetail {

@@ -1,11 +1,15 @@
-﻿# Kinderbetreuung 1.0.17
+﻿# Kinderbetreuung 1.0.18
 # Schlanker Programmeinstieg. Fachlogik liegt unter .\Modules.
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 $ErrorActionPreference = "Stop"
-$AppDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if ($script:EmbeddedMode) {
+    $AppDir = [System.AppDomain]::CurrentDomain.BaseDirectory.TrimEnd('\')
+} else {
+    $AppDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
 
 # Persistente Nutzerdaten bleiben bei Updates unangetastet.
 $UserDataDir = Join-Path $env:LOCALAPPDATA "Kinderbetreuung"
@@ -32,18 +36,20 @@ $script:IsDirty = $false
 $script:ClosingConfirmed = $false
 
 
-$modules = @(
-    "Core.ps1",
-    "Calendar.ps1",
-    "Data.ps1",
-    "Export.ps1",
-    "UI.ps1"
-)
+if (-not $script:EmbeddedMode) {
+    $modules = @(
+        "Core.ps1",
+        "Calendar.ps1",
+        "Data.ps1",
+        "Export.ps1",
+        "UI.ps1"
+    )
 
-foreach ($module in $modules) {
-    $path = Join-Path $AppDir ("Modules\" + $module)
-    if (-not (Test-Path $path)) {
-        throw "Programmkomponente fehlt: $module"
+    foreach ($module in $modules) {
+        $path = Join-Path $AppDir ("Modules\" + $module)
+        if (-not (Test-Path $path)) {
+            throw "Programmkomponente fehlt: $module"
+        }
+        . $path
     }
-    . $path
 }

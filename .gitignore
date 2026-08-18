@@ -21,3 +21,7 @@ Export/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+Build/Generated/
+
+Build/Launcher.generated.cs
